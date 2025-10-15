@@ -1,47 +1,153 @@
-import database from '../services/database.js'; // Import the database connection from the newly created database service
-import { ScanCommand } from '@aws-sdk/lib-dynamodb'; // Import ScanCommand for querying the DynamoDB table
+import database from '../services/database.js';
+import {
+  ScanCommand,
+  PutCommand,
+  GetCommand,
+  UpdateCommand,
+  DeleteCommand,
+} from '@aws-sdk/lib-dynamodb';
+// Import the 'uuid' library to generate unique IDs for each account
+import { v4 as uuidv4 } from 'uuid';
+// Import the account schema for validating the account data
+import accountSchema from '../models/account.js';
 
 async function getAllAccounts(req, res, next) {
   try {
     const params = {
-      TableName: 'Accounts', // Specify the name of the table to scan
+      TableName: 'Accounts',
     };
-    const command = new ScanCommand(params); // Create a new ScanCommand to get all items from the table
-    const result = await database.send(command); // Send the command to DynamoDB and await the result
-    res.status(200).json(result.Items); // Respond with the items found in the table
+    const command = new ScanCommand(params);
+    const result = await database.send(command);
+    res.status(200).json(result.Items);
   } catch (err) {
-    next(err); // Pass errors to the error-handling middleware
+    next(err);
   }
 }
 
-function createAccount(req, res) {
-  res.send(
-    '🤖 Accounts Route with POST method - this endpoint will create a new account in the database'
-  );
+async function createAccount(req, res, next) {
+  try {
+    // Generate a unique ID for the new account
+    const uuid = uuidv4();
+    req.body.id = uuid;
+
+    // Validate the request body against the schema
+    const { error, value } = accountSchema.validate(req.body);
+
+    if (error) {
+      // Respond with a 400 status and validation error if the data is invalid
+      res.status(400).json({ error: error.details[0].message });
+      return;
+    }
+
+    const { id, sort_code, account_number, balance } = value;
+
+    // Create the new account in DynamoDB
+    const params = {
+      TableName: 'Accounts',
+      Item: {
+        id,
+        sort_code,
+        account_number,
+        balance,
+      },
+    };
+
+    const command = new PutCommand(params);
+    await database.send(command);
+
+    res
+      .status(201)
+      .json({ message: 'Successfully created account', data: params.Item });
+  } catch (error) {
+    next(error);
+  }
 }
 
-function getAccountById(req, res) {
+async function getAccountById(req, res, next) {
   const accountId = req.params.id;
-  res.send(
-    '🤖 Accounts Route with GET method - this endpoint will get a single account by ID from the database. The account is: ' +
-      accountId
-  );
+  try {
+    const params = {
+      TableName: 'Accounts',
+      Key: { id: accountId },
+    };
+    const command = new GetCommand(params);
+    const result = await database.send(command);
+    if (!result.Item) {
+      return res.status(404).json({ message: 'No account found' });
+    }
+    res.status(200).json(result.Item);
+  } catch (err) {
+    next(err);
+  }
 }
 
-function updateAccountById(req, res) {
-  const accountId = req.params.id;
-  res.send(
-    '🤖 Accounts Route with PUT method - this endpoint will update a single account by ID from the database. The account is: ' +
-      accountId
-  );
+async function updateAccountById(req, res, next) {
+  try {
+    const accountId = req.params.id;
+    req.body.id = accountId;
+
+    // Validate the request body against the schema
+    const { error, value } = accountSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { balance, sort_code, account_number } = value;
+
+    // Retrieve the existing account from DynamoDB
+    const getParams = {
+      TableName: 'Accounts',
+      Key: { id: accountId },
+    };
+    const getCommand = new GetCommand(getParams);
+    const result = await database.send(getCommand);
+
+    const account = result.Item;
+    if (!account) {
+      return res.status(404).json({ message: 'No account found' });
+    }
+
+    // Update the account in DynamoDB
+    const updateParams = {
+      TableName: 'Accounts',
+      Key: { id: accountId },
+      UpdateExpression:
+        'set #balance = :balance, #sort_code = :sort_code, #account_number = :account_number',
+      ExpressionAttributeNames: {
+        '#balance': 'balance',
+        '#sort_code': 'sort_code',
+        '#account_number': 'account_number',
+      },
+      ExpressionAttributeValues: {
+        ':balance': balance,
+        ':sort_code': sort_code,
+        ':account_number': account_number,
+      },
+      ReturnValues: 'ALL_NEW',
+    };
+    const updateCommand = new UpdateCommand(updateParams);
+    const updatedAccount = await database.send(updateCommand);
+
+    res.status(200).json(updatedAccount.Attributes);
+  } catch (err) {
+    next(err);
+  }
 }
 
-function deleteAccountById(req, res) {
+async function deleteAccountById(req, res, next) {
   const accountId = req.params.id;
-  res.send(
-    '🤖 Accounts Route with DELETE method - this endpoint will delete a single account by ID from the database. The account is: ' +
-      accountId
-  );
+  try {
+    const params = {
+      TableName: 'Accounts',
+      Key: { id: accountId },
+    };
+    const command = new DeleteCommand(params);
+    await database.send(command);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 }
 
 export default {

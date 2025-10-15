@@ -154,3 +154,26 @@ Session.vim
 tags
 
 # End of https://www.gitignore.io/api/node,vim,git,macos,linux,sublimetext
+
+
+# Terraform-generated files and directories
+.terraform/                 # Terraform's working directory for providers and modules
+.terraform.lock.hcl         # Dependency lock file (often committed, but can be ignored in specific cases)
+*.tfstate                   # Terraform state files
+*.tfstate.*                 # Terraform state backup files
+crash.log                   # Terraform crash logs
+*.tfplan                    # Terraform plan output files
+
+# Sensitive variable files
+*.tfvars                    # Terraform variable definition files
+*.tfvars.json               # Terraform variable definition files in JSON format
+
+# Override files (if not intended for version control)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
